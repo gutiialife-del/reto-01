@@ -82,7 +82,10 @@ export const mapear_campos = defineTool({
       await writeText(path.join(salida, "faltantes.md"), reporteFaltantes(args.caso, lectura, mapeo))
       return ok({
         caso: args.caso,
-        ...mapeo,
+        llenos: mapeo.llenos,
+        faltantes: mapeo.faltantes.map((f) => ({ ...f, accion: "ninguna: no existe en el maestro, queda en blanco y en el checklist" })),
+        requiere_confirmacion: mapeo.requiere_confirmacion.map((r) => ({ ...r, accion: accionPara(r.motivo) })),
+        siguiente_paso: "llama proveedor_generar_formulario pasando mapeo.llenos exactamente como está aquí (sin agregar campos)",
         reporte_faltantes: rel(path.join(salida, "faltantes.md")),
         resumen: `${mapeo.llenos.length} llenos · ${mapeo.faltantes.length} faltantes · ${mapeo.requiere_confirmacion.length} requieren confirmación`,
       })
@@ -128,12 +131,27 @@ function verificarContraMaestro(propuestos: Array<{ etiqueta: string; ruta: stri
   for (const p of propuestos) {
     const real = verdad.llenos.find((l) => l.etiqueta === p.etiqueta)
     if (!real) {
-      throw new ToolError(`"${p.etiqueta}" no está lleno según el maestro (es faltante o requiere confirmación); no puedo escribir un valor para ese campo`)
+      const rc = verdad.requiere_confirmacion.find((r) => r.etiqueta === p.etiqueta)
+      // RN1: el identificador extranjero ya se escribe con el NIT por regla; si el modelo lo repite con ese mismo valor, no es un dato inventado.
+      if (rc && esReglaPais(rc.motivo) && String(rc.valor_propuesto) === String(p.valor)) continue
+      if (rc) {
+        throw new ToolError(`"${p.etiqueta}" está en requiere_confirmacion, no en llenos: no lo pongas en mapeo.llenos. Si el usuario lo aceptó explícitamente, pásalo en mapeo.confirmados`)
+      }
+      throw new ToolError(`"${p.etiqueta}" es faltante: no existe en el maestro y queda en blanco; no se le puede escribir un valor`)
     }
     if (String(real.valor) !== String(p.valor) || real.ruta !== p.ruta) {
       throw new ToolError(`el valor propuesto para "${p.etiqueta}" no coincide con maestro.${real.ruta}; usa exactamente la salida de proveedor_mapear_campos`)
     }
   }
+}
+
+const esReglaPais = (motivo: string): boolean => motivo.startsWith("identificador extranjero")
+
+/** Indicación para el modelo: qué hacer (o no hacer) con cada campo por confirmar. */
+function accionPara(motivo: string): string {
+  return esReglaPais(motivo)
+    ? "ninguna ahora: por la regla RN1 el formulario se llena con el NIT y el campo queda marcado en el checklist. No preguntes al usuario por él; solo infórmalo."
+    : "ninguna ahora: queda en blanco y en el checklist. Solo si el usuario acepta explícitamente el valor propuesto, pásalo en mapeo.confirmados."
 }
 
 type FilaFormulario = { campo: Campo; valor: Valor | null; estado: "lleno" | "faltante" | "requiere_confirmacion" }
@@ -162,7 +180,14 @@ async function escribirFormulario(
 ): Promise<Record<string, unknown>> {
   const salida = rutas(dir).out(caso)
   const filas = filasFormulario(lectura, mapeo, confirmados)
-  const conteo = { llenos: filas.filter((f) => f.estado === "lleno").length, faltantes: filas.filter((f) => f.estado === "faltante").length, por_confirmar: filas.filter((f) => f.estado === "requiere_confirmacion").length }
+  const conteo = {
+    llenos: filas.filter((f) => f.estado === "lleno").length,
+    faltantes: filas.filter((f) => f.estado === "faltante").length,
+    por_confirmar: filas.filter((f) => f.estado === "requiere_confirmacion").length,
+    campos_marcados: filas
+      .filter((f) => f.estado !== "lleno")
+      .map((f) => ({ etiqueta: f.campo.etiqueta, estado: f.estado, valor_escrito: f.valor === null ? null : String(f.valor) })),
+  }
   if (!lectura.campos.length) {
     throw new ToolError(`no puedo generar el formulario: la plantilla no tiene campos legibles (${lectura.advertencias.join("; ") || "sin detalle"})`)
   }
@@ -299,6 +324,7 @@ export const armar_paquete = defineTool({
         campos_faltantes: mapeo.faltantes.map((f) => f.etiqueta),
         campos_por_confirmar: mapeo.requiere_confirmacion.map((f) => ({ etiqueta: f.etiqueta, motivo: f.motivo })),
         archivos: { formulario, checklist: rel(checklist), borrador_correo: rel(borrador) },
+        pendiente_confirmacion: { accion: `simular envío de ${args.caso}`, detalle: `el paquete ${listo ? "está" : "NO está"} listo para firma; el envío solo se simula si el usuario lo confirma` },
         advertencias: avisos,
         resumen: `${listo ? "LISTO para firma" : "NO listo para firma"} · soportes: ${estados.filter((e) => e.estado === "presente").length}/${estados.length} presentes${bloqueos.length ? ` · bloqueos: ${bloqueos.join("; ")}` : ""}`,
       })
