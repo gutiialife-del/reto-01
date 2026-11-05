@@ -1,0 +1,23 @@
+{
+  "_descripcion": "Parámetros de negocio que leen las herramientas. Cambiar una regla aquí no exige tocar el servidor ni el código de las herramientas.",
+  "identificador_tributario_por_pais": { "CO": "NIT", "EC": "RUC", "PE": "RUC", "PA": "RUC", "HN": "RTN" },
+  "pais_del_maestro": "CO",
+  "ruta_identificador_tributario": "nit",
+  "etiquetas_ambiguas": ["Identificación tributaria", "Número de identificación fiscal"],
+  "umbral_confianza": 0.8,
+  "umbral_sugerencia": 0.7,
+  "confianza_coincidencia_normalizada": 0.95,
+  "rutas_bancarias": ["banco.nombre", "banco.tipo_cuenta", "banco.numero_cuenta", "banco.titular", "banco.swift", "banco.moneda"],
+  "rutas_sensibles": ["banco.numero_cuenta", "banco.swift", "representante_legal.identificacion"],
+  "formatos_soportados": ["xlsx", "pdf"],
+  "formatos_solo_valores": ["portal"],
+  "nombres_soporte": {
+    "camara_comercio": "Certificado de Cámara de Comercio / existencia y representación legal",
+    "rut": "RUT (registro tributario)",
+    "certificacion_bancaria": "Certificación bancaria",
+    "parafiscales": "Certificación de pago de parafiscales y seguridad social",
+    "estados_financieros": "Estados financieros",
+    "certificado_cumplimiento_tributario": "Certificado de cumplimiento tributario",
+    "certificado_iso_9001": "Certificado ISO 9001"
+  }
+}
