@@ -48,10 +48,16 @@ En este reto la acción externa es `proveedor_simular_envio`: sin `confirmado: t
 
 ## 4. Elección del modelo
 
-- **Proveedor por defecto:** Anthropic, modelo `claude-sonnet-5-5` (configurable con `LLM_MODEL`). Motivos: buen seguimiento de instrucciones largas en español, uso de herramientas en paralelo (varias llamadas en una misma respuesta) y respuestas estructuradas. Para bajar costo se puede usar un modelo más pequeño de la misma familia cambiando solo `LLM_MODEL`; el diseño lo tolera porque los valores y las reglas los calculan las herramientas, no el modelo.
-- **Alternativa sin tocar el ciclo:** `LLM_PROVIDER=openai` usa cualquier API compatible con OpenAI Chat Completions (OpenAI u otros proveedores vía `LLM_BASE_URL`).
-- **Costo estimado por caso.** El contexto fijo (system prompt + esquemas de herramientas) mide aproximadamente 2 700 tokens (calculado sobre los caracteres del prompt y los esquemas; la cifra exacta depende del tokenizador). Un caso típico ("procesa el caso X") usa 5–6 llamadas a herramientas en 5–7 vueltas. Como cada vuelta reenvía el historial, el orden de magnitud es de **unas decenas de miles de tokens de entrada y 2–4 mil de salida por caso**. Costo ≈ `tokens_entrada × precio_entrada + tokens_salida × precio_salida`, con el precio por millón de tokens vigente en la página de precios del proveedor. Estas cifras son una estimación previa, no una medición: el footer del chat muestra los tokens reales de la sesión, que conviene registrar en la prueba con el modelo real.
-- ⚠️ PENDIENTE (Guti): reemplazar la estimación por la medición real (tokens del footer × precio vigente del modelo usado).
+- **Proveedor y modelo usados en la prueba:** OpenAI, modelo `gpt-4.1-mini` (`LLM_PROVIDER=openai`, `LLM_MODEL=gpt-4.1-mini`). Lo elegí porque ya tenía créditos en la API de OpenAI, tiene buen soporte de llamadas a herramientas (incluidas varias en paralelo) y es barato por token. El código también trae un adaptador para Anthropic (Claude); cambiar de proveedor es cambiar dos variables de entorno, sin tocar el ciclo del agente. Para un modelo pequeño como este el diseño es clave: las reglas y los valores los calculan las herramientas, así que el modelo solo orquesta y explica.
+- **Aviso:** la documentación de OpenAI marca `gpt-4.1-mini` como *deprecated* (al 2026-11-05). Funciona hoy, pero si OpenAI lo retira basta con cambiar `LLM_MODEL` por otro modelo de chat disponible en la cuenta.
+- **Costo medido (no estimado).** Precio de `gpt-4.1-mini` según la página del modelo en OpenAI: USD 0,40 por millón de tokens de entrada y USD 1,60 por millón de salida. Tokens reales registrados por el servidor (`out/sessions/`) en mis pruebas del caso `ec-corp-andina`:
+
+  | Sesión | Turnos | Tokens entrada | Tokens salida | Costo aprox. |
+  |---|---|---|---|---|
+  | Procesar el caso + 1 respuesta de confirmación (el envío no llegó a ejecutarse: aún faltaba la segunda corrección) | 2 | 33 838 | 874 | ≈ USD 0,015 |
+  | Flujo completo hasta el envío simulado, con confirmaciones de más (primera prueba) | 5 | 76 402 | 1 851 | ≈ USD 0,034 |
+
+  **Costo por caso procesado: entre ≈ USD 0,015 y ≈ USD 0,034**, según cuántas vueltas haga el agente. La mayor parte es entrada, porque cada vuelta reenvía el historial; por eso cada pregunta innecesaria encarece el caso. Con 8–12 solicitudes al mes, el costo del modelo quedaría por debajo de USD 0,50 mensuales (cálculo con las cifras anteriores; el precio puede cambiar).
 
 ## 5. Diseño del formato «portal web con usuario y contraseña» (no implementado)
 
@@ -111,7 +117,8 @@ En este reto la acción externa es `proveedor_simular_envio`: sin `confirmado: t
   - *Dejar que el modelo valide o calcule:* toda regla vive en herramientas deterministas; el modelo orquesta y explica. Por eso las herramientas recalculan desde los fixtures lo que el modelo les devuelve y rechazan valores alterados.
   - *Habilitar `confirmado: true` cuando el modelo "pregunta algo":* se descartó porque una pregunta cualquiera ("¿proceso otro caso?") seguida de "sí" habría autorizado acciones externas; solo la marca formal habilita.
   - *Exceljs para el Excel:* descartado por peso; JSZip + OOXML mínimo cubre el requisito (escribir en celdas exactas) y se verifica en la demo.
-- ⚠️ PENDIENTE (Guti): agregar en primera persona qué revisaste línea a línea, qué cambiaste tú y qué propuestas de la IA rechazaste. El PRD exige poder explicar cada línea en la defensa.
+- **Lo que hice yo:** corrí las demos y los tres chats en mi computadora (Windows, Bun) con OpenAI `gpt-4.1-mini`, revisé los archivos generados (Excel, PDF, checklist, borrador de correo) y comparé los resultados con el PRD. Elegí OpenAI como proveedor porque ya tenía créditos.
+- **Lo que detecté probando y se corrigió:** con `gpt-4.1-mini` el agente pedía confirmación por el RUC (que por la regla RN1 se llena solo con el NIT) e intentaba escribirlo a mano en `llenos`; la herramienta lo rechazaba, como debía, pero el flujo terminaba con varias confirmaciones. Le pedí a Claude corregirlo y la solución fue doble: el prompt prohíbe preguntar por esos campos y las respuestas de las herramientas indican qué hacer con cada campo (`accion`, `valor_escrito`). También vi que, si el modelo preguntaba en texto sin registrar la confirmación, el servidor bloqueaba mi "confirmo"; ahora la herramienta `proveedor_armar_paquete` deja registrada la confirmación del envío.
 
 ## 10. Riesgos de llevarlo a producción
 
